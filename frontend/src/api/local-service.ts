@@ -1,5 +1,6 @@
 import { MODULE_BY_KEY } from '@/data/modules'
 import { allRows, listRows, resetRows, saveRows } from '@/data/local-store'
+import { enableLineageNode, resetLineageModule } from './lineage-service'
 import type { ActionResult, EntryRow, ModuleMeta, OverviewResult, PageResult } from '@/data/types'
 
 // 会写进数据的「往回走」动作：命中就把这条记录标成异常态，看板上能一眼看出来。
@@ -43,6 +44,10 @@ export function runAction(key: string, id: number, action: string): ActionResult
   if (current === target) {
     return { ok: false, message: `${meta.entity}已经是「${target}」，不用重复操作` }
   }
+  // 血缘图谱启用走独立链路：环路/自引用/停用引用校验、版本冻结、元数据同步、并发幂等与事务回退。
+  if (key === 'lineage' && action === '启用节点') {
+    return enableLineageNode(id)
+  }
   const lastStatus = meta.statuses[meta.statuses.length - 1]
   const updated: EntryRow = {
     ...rows[index],
@@ -57,6 +62,10 @@ export function runAction(key: string, id: number, action: string): ActionResult
 }
 
 export function resetModule(key: string): PageResult {
+  if (key === 'lineage') {
+    resetLineageModule()
+    return listEntries(key)
+  }
   resetRows(key)
   return listEntries(key)
 }

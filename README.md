@@ -38,6 +38,31 @@ cd frontend
 npm run build
 ```
 
+单元测试（Node 内置 test runner，无需第三方依赖）：
+
+```bash
+cd frontend
+npm test
+```
+
+## 血缘图谱：环路校验与版本冻结
+
+血缘节点的「启用节点」动作走独立链路（`src/api/lineage-service.ts` +
+`src/domain/lineage-graph.ts`），规则如下：
+
+- **启用前上下游关系检查**：出现自引用、反向边（两节点互为上下游）、多节点环路、
+  指向已停用节点、指向不存在的节点、超出节点/关系数上限时，拒绝成为已启用节点。
+  历史已启用节点不回溯校验（历史取值沿用旧规则）。
+- **版本冻结**：校验通过后按图谱结构指纹（节点 + 去重边）生成不可变图谱版本，
+  版本与去重后的边一起落到独立存储键 `lake-govern-config:graph-store`。
+- **并发幂等**：同一图谱（同结构指纹）并发启用只允许一个版本成功，后到请求直接复用
+  已有版本，不生成重复边；页面提供「并发启用演练」按钮可复核该结论。
+- **同步元数据中心**：冻结版本同步写入/更新元数据条目，条目记录关联节点编号与
+  图谱版本号，元数据清单、血缘清单、冻结版本清单三份导出反映同一版本结论。
+- **事务回退**：校验结果或版本未完整落库时，整次启用整体回退（业务条目库与版本库
+  双快照还原），不留下半套连接关系。
+- 已启用节点的上下游关系随版本冻结，需先停用才能在「编辑关系」弹窗中修改。
+
 ## 业务模块
 
 | 模块 | 目录 | 业务对象 | 主要字段 |
@@ -63,12 +88,16 @@ npm run build
 
 ## 约定
 
-- 每个模块的页面在 `frontend/src/views/<模块>/index.vue`，页面只负责渲染，读写统一走
-  `frontend/src/api/local-service.ts`。
+- 每个模块的页面在 `frontend/src/views/<模块>/`，页面只负责渲染，读写统一走
+  `frontend/src/api/local-service.ts`；血缘图谱的启用链路另见
+  `frontend/src/api/lineage-service.ts`，纯领域规则在 `frontend/src/domain/`。
 - 字段、状态、动作与流转目标集中在 `frontend/src/data/modules.ts`；示例数据在
   `frontend/src/data/seed.ts`。
-- 状态流转只允许在 `local-service.ts` 里改，页面组件不做业务判断。
-- 想回到初始数据：清掉浏览器里 `lake-govern-config:entries` 这一项，或调用 `resetModule(模块)`。
+- 状态流转只允许在 `local-service.ts`（及血缘专用 `lineage-service.ts`）里改，
+  页面组件不做业务判断。
+- 想回到初始数据：清掉浏览器里 `lake-govern-config:entries` 与
+  `lake-govern-config:graph-store` 两项，或在血缘图谱页点「重置模块数据」/调用
+  `resetModule(模块)`。
 
 领域：数据工程
 子方向：数仓与数据湖

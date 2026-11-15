@@ -54,6 +54,20 @@ export function resetRows(key: string): EntryRow[] {
   return rows
 }
 
+// 跨模块事务：先由业务层基于快照算出整库下一态，再一次性提交；
+// 任何一步失败都用原快照整体还原，避免留下半套连接关系。
+export function snapshotRows(): Record<string, EntryRow[]> {
+  return clone(allRows())
+}
+
+export function replaceAllRows(snapshot: Record<string, EntryRow[]>): void {
+  const next = clone(snapshot)
+  cache = next
+  if (typeof window !== 'undefined' && window.localStorage) {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+  }
+}
+
 export function storageKey(): string {
   return STORAGE_KEY
 }
